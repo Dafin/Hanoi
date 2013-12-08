@@ -1,0 +1,212 @@
+int i;
+		UInt16 numDiscs,
+				numPegs,
+				thisDisc;
+		bool thisIsEmpty;
+		Move newOne = null;
+
+            public static int Main(string[] args)
+		{
+			string[] line;
+			string ret = string.Empty;
+
+			List<Move> startMoves = new List<Move>();
+			List<Move> thisStartLayer = new List<Move>();
+			List<Move> nextStartLayer = null;
+			List<Move> endMoves = new List<Move>();
+			List<Move> thisEndLayer = new List<Move>();
+			List<Move> nextEndLayer = null;
+
+			// Read in all values and create structures with them
+			line = Console.ReadLine().Split(' ');
+			UInt16.TryParse(line[0], out numDiscs);
+			UInt16.TryParse(line[1], out numPegs);
+
+			Move start = new Move(null, numDiscs, numPegs);
+			Move end = new Move(null, numDiscs, numPegs);
+
+			// Where the discs all start
+			line = Console.ReadLine().Split(' ');
+                    
+			thisDisc = 0;
+			foreach (string pegNum in line)
+			{
+				int pn = int.Parse(pegNum) - 1;
+				// Move any others up the chain
+				for (i = pn * numDiscs + (start.pegNumDiscs[pn]++); i > pn * numDiscs; --i)
+					start.pegs[i] = start.pegs[i - 1];
+				start.pegs[pn * numDiscs] = ++thisDisc;
+			}
+
+			// Where the discs should end up
+			line = Console.ReadLine().Split(' ');
+			thisDisc = 0;
+			foreach (string pegNum in line)
+			{
+				int pn = int.Parse(pegNum) - 1;
+				// Move any others up the chain
+				for (i = pn * numDiscs + (end.pegNumDiscs[pn]++); i > pn * numDiscs; --i)
+					end.pegs[i] = end.pegs[i - 1];
+				end.pegs[pn * numDiscs] = ++thisDisc;
+			}
+
+			startMoves.Add(start);
+			thisStartLayer.Add(start);
+			endMoves.Add(end);
+			thisEndLayer.Add(end);
+
+			// Find each possible move that doesn't in any way fold back on a previous condition,
+			// and doesn't move from the place that was just moved to in the last round
+
+			Move[] win;
+			while (thisStartLayer.Count > 0 && thisEndLayer.Count > 0)
+			{
+				// A move from the start to the end
+				if ((win = iterate(ref nextStartLayer, ref thisStartLayer, ref startMoves, ref endMoves)) != null)
+				{
+					Console.WriteLine(writeMoves(win[0], win[1]).ToString());
+					break;
+				}
+				// Another from the end to the start
+				if ((win = iterate(ref nextEndLayer, ref thisEndLayer, ref endMoves, ref startMoves)) != null)
+				{
+					Console.WriteLine(writeMoves(win[1], win[0]).ToString());
+					break;
+				}
+			}
+
+		}
+
+		private Move[] iterate(ref List<Move> nextStartLayer, ref List<Move> thisStartLayer, ref List<Move> startMoves, ref List<Move> endMoves)
+		{
+			Move tieIn;
+
+			nextStartLayer = new List<Move>();
+			foreach (Move thisOne in thisStartLayer)
+			{
+				// Go through each topmost peg for the start side
+				for (i = 0; i < numPegs; ++i)
+				{
+					// Skip ones with no disc
+					if (thisOne.pegNumDiscs[i] == 0)
+						continue;
+					thisDisc = thisOne.pegs[(i * numDiscs) + thisOne.pegNumDiscs[i] - 1];
+					// See where this disc can be placed
+					for (int j = 0; j < numPegs; ++j)
+					{
+						thisIsEmpty = thisOne.pegNumDiscs[j] == 0;
+						if (j == i ||		// Can't place it on the same peg obviously
+							// Pointless to move the same one that was moved last time
+							(thisOne.parent != null && i == thisOne.parent.to) ||
+							// Can't put a larger disc over a smaller one
+							(!thisIsEmpty && thisOne.pegs[(j*numDiscs) + thisOne.pegNumDiscs[j] - 1] < thisDisc))
+							continue;
+						// Cool, so far it's a valid option.  We can clone, change, and see if
+						// this new one is the same as any existing 
+						thisOne.Clone(ref newOne);
+						newOne.pegs[(i * numDiscs) + --newOne.pegNumDiscs[i]] = 0;	// Moving the disc...
+						newOne.pegs[(j*numDiscs) + newOne.pegNumDiscs[j]++] = thisDisc;	// ...to here
+						// Compare against all existing to see if we've already done this
+						// %%% Testing -- now it's gonna get enormous
+						if ((tieIn = startMoves.Find(delegate(Move x) { return x.Equals(newOne); })) != null)
+						{	// Why does this sometimes inappropriately match?
+							continue;
+						}
+						//if (startMoves.Contains(newOne))
+						//    continue;
+
+						newOne.parent = thisOne;
+						newOne.from = i;
+						newOne.to = j;
+
+						// Apparently we have a new unique move on our hands.  Does this connect with the other side's work?
+						if ((tieIn = endMoves.Find(delegate(Move x) { return x.Equals(newOne); })) != null)
+						{	// Cool, we won!  Return the matching winners.
+							return new Move[]{newOne, tieIn};
+						}
+						// OK so we didn't win, but still, commit it and keep going
+						//if (newOne.pegNumDiscs[j] == 1)		// Was this a move to an empty peg?
+						//    alreadyHaveEmpty = true;
+						nextStartLayer.Add(newOne);
+						newOne = null;
+					}
+				}
+			}
+			startMoves.AddRange(nextStartLayer);		// If we had added this one at a time above, it would sometimes confuse the heck out of things.  I don't fully know why yet.
+			thisStartLayer = nextStartLayer;
+			return null;
+		}
+
+		// Spit out entire sequence of thisOne's parents on up, matched to tieIn's parents.
+		StringBuilder writeMoves(Move st, Move en)
+		{
+			int numMoves = 0;
+			StringBuilder moves = new StringBuilder();
+			while (st.parent != null)
+			{
+				moves.Insert(0, (st.from + 1).ToString() + " " + (st.to + 1).ToString() + "\r\n");
+				st = st.parent;
+				++numMoves;
+			}
+			while (en.parent != null)
+			{
+				moves.Append((en.to + 1).ToString() + " " + (en.from + 1).ToString() + "\r\n");
+				en = en.parent;
+				++numMoves;
+			}
+			moves.Insert(0, numMoves.ToString() + "\r\n");
+			return moves;
+		}
+
+        } // End Class
+
+	internal class Move
+	{
+		internal ushort[] pegs;
+		internal byte[] pegNumDiscs;
+		internal Move parent = null;
+		internal int from,
+			to = -1;
+		int numDiscs;
+
+		public Move(Move parent, int numDiscs, int numPegs)
+		{
+			this.parent = parent;
+			this.numDiscs = numDiscs;
+			pegs = new ushort[numPegs * numDiscs];
+			pegNumDiscs = new byte[numPegs];
+		}
+
+		public bool IsSame(Move inc)		// Check one against the other
+		{
+			int i = 0;
+			for (; i < pegs.Length; ++i)
+				if (pegs[i] != inc.pegs[i])
+					break;
+			return i == pegs.Length;
+		}
+
+		public void Clone(ref Move newOne)
+		{
+			int i;
+			if (newOne == null)		// Build it out if it doesn't yet exist
+				newOne = new Move(parent, numDiscs, pegNumDiscs.Length);
+			else
+			{
+				newOne.parent = parent;		// Otherwise reuse
+				newOne.to = -1;
+			}
+			for (i = 0; i < pegs.Length; ++i)
+				newOne.pegs[i] = pegs[i];
+			for (i = 0; i < pegNumDiscs.Length; ++i)
+				newOne.pegNumDiscs[i] = pegNumDiscs[i];
+		}
+
+		public override bool Equals(object obj)
+		{
+			Move x = (Move)obj;
+			for (int i = 0; i < pegs.Length; ++i)
+				if(x.pegs[i] != pegs[i])
+					return false;
+			return true;
+		}
