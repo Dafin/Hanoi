@@ -23,13 +23,18 @@ class Move
 	# Quickly generate a quasi-unique hash based on where the discs
 	# are on the pegs.
 	def hash(numDiscs)
+		nd = numDiscs - 1
 		ret = 0
-		for i in (0..pegs.length-1)
+		for i in (0..pegs.length - 1)
 			for j in (0..pegs[i].length - 1)
 				# This is some bitwise manipulation that exclusive-ORs 2 bits
 				# for each disc at a unique offset for the disc's peg and position
 				# on the peg
-				ret ^= ((pegs[i][j] % 7)+1) << (((i*numDiscs + j)%16)<<1)
+#				ret ^= ((pegs[i][j] % nd)+1) << (((i*numDiscs + j)%16)<<1)
+#				Best value for 8 5 - 13
+#				Best for 7 5 - 16
+#				Best for 7 5 - 16
+				ret ^= ((pegs[i][j] % nd)+1) << (((i*numDiscs + j)%16)<<1)
 			end
 		end
 		# Return a 4-byte FixNum
@@ -51,33 +56,72 @@ class Move
 		newOne
 	end
 
-	def all_moves
-		# We look at each peg, and if there is a disc
+	def all_moves(finish)
+			# We look at each peg, and if there is a disc
 		# see where it can move
 		result = []
-		src_index = 0
-		self.pegs.each do |src|
+		cm1 = self.pegs.count - 1
+		for si in (0..cm1)
+			src = self.pegs[si]
 			if src.count > 0	# If there is a disc here
 				this_disc = src.last	# Grab the disc itself
 				# Look for all possible destination pegs
-				dest_index = 0
-				self.pegs.each do |dest|
-					if this_disc &&	# We actually have a disc!
-					 dest != src &&	# Not the same peg
-						(dest.last == nil	||	# Empty destination
-						 dest.last > this_disc)	# Bigger destination disc
-						new_move = self.clone
+				# This speeds things up enormously, especially with lots of pegs or in cases where we're going all from one peg to all another
+				# It tests if this disc should be at the root of this destination peg
+				hasFoundEmpty = false	# Have we already been working with an empty peg?
+				for di in (0..cm1)
+					dest = self.pegs[di]
+					destLast = dest.last
 
-						new_move.from = src_index
-						new_move.to = dest_index
-						new_move.pegs[dest_index].push new_move.pegs[src_index].pop	# Actually move the disc
-						# Put this valid move in the array of results
-						result.push new_move
+					# # Previous DRY version
+					# if dest != src &&	# Not the same peg
+					# 	(destLast == nil	||	# Empty destination
+					# 	 destLast > this_disc)	# Bigger destination disc
+					# 	root = finish[di]
+					# 	if destLast == nil && root != this_disc
+					# 		# The only two conditions a disc should be moved to an empty peg are if it's the
+					# 		# first empty peg we've tested or this is a root disc and is the real destination
+					# 		# for this disc
+					# 		next if hasFoundEmpty && root == nil
+					# 		hasFoundEmpty = true
+					# 	end
+					# 	new_move = self.clone
+					# 	new_move.from = si
+					# 	new_move.to = di
+					# 	new_move.pegs[di].push new_move.pegs[si].pop	# Actually move the disc
+					# 	# Put this valid move in the array of results
+					# 	result.push new_move
+					# end
+
+					# Unrolling this has the exact same logic, but makes it 1.3% faster
+					if dest != src	# Not the same peg
+						if destLast == nil	# Empty destination
+							root = finish[di]
+							if root != this_disc
+								# The only two conditions a disc should be moved to an empty peg are if it's the
+								# first empty peg we've tested or this is a root disc and is the real destination
+								# for this disc
+								next if hasFoundEmpty && root == nil
+								hasFoundEmpty = true
+							end
+							new_move = self.clone
+							new_move.from = si
+							new_move.to = di
+							new_move.pegs[di].push new_move.pegs[si].pop	# Actually move the disc
+							# Put this valid move in the array of results
+							result.push new_move
+						elsif destLast > this_disc	# Bigger destination disc
+							new_move = self.clone
+							new_move.from = si
+							new_move.to = di
+							new_move.pegs[di].push new_move.pegs[si].pop	# Actually move the disc
+							# Put this valid move in the array of results
+							result.push new_move
+						end
 					end
-					dest_index += 1
+
 				end
 			end
-			src_index += 1  # Add one to our source index
 		end
 		result
 	end
